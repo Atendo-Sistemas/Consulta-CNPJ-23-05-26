@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: cnpj-saas-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-cnpj_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password_here}
+      POSTGRES_DB: ${DB_NAME:-cnpj_saas}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./Database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./Database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-cnpj_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend Node.js
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cnpj-saas-backend
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      DATABASE_URL: postgresql://${DB_USER:-cnpj_user}:${DB_PASSWORD:-secure_password_here}@postgres:5432/${DB_NAME:-cnpj_saas}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-cnpj_user}
+      DB_PASSWORD: ${DB_PASSWORD:-secure_password_here}
+      DB_NAME: ${DB_NAME:-cnpj_saas}
+      JWT_SECRET: ${JWT_SECRET:-your_super_secret_jwt_key_change_this_in_production}
+      LICENSE_SECRET_KEY: ${LICENSE_SECRET_KEY:-your_license_secret_key}
+      CNPJ_API_URL: ${CNPJ_API_URL:-https://publica.cnpj.ws/cnpj}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./dist:/app/dist
+    command: npm run dev
+
+  # Redis (opcional, para cache e rate limiting)
+  redis:
+    image: redis:7-alpine
+    container_name: cnpj-saas-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: cnpj-saas-network

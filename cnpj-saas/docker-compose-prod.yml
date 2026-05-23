@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  consulta:
+    image: seu-usuario/cnpj-consulta:latest
+    container_name: cnpj-consulta
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    networks:
+      - cnpj-network
+    environment:
+      - NODE_ENV=production
+
+  backend:
+    image: seu-usuario/cnpj-saas-backend:latest
+    container_name: cnpj-saas-backend
+    ports:
+      - "5000:3000"
+    restart: unless-stopped
+    networks:
+      - cnpj-network
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://cnpj_user:${DB_PASSWORD}@postgres:5432/cnpj_saas
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    image: seu-usuario/cnpj-saas-frontend:latest
+    container_name: cnpj-saas-frontend
+    ports:
+      - "3000:5173"
+    restart: unless-stopped
+    networks:
+      - cnpj-network
+    environment:
+      - NODE_ENV=production
+      - VITE_API_URL=http://api.seu-dominio.com
+
+  postgres:
+    image: postgres:14-alpine
+    container_name: cnpj-postgres
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - cnpj-network
+    environment:
+      - POSTGRES_USER=cnpj_user
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=cnpj_saas
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./Database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./Database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cnpj_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+
+networks:
+  cnpj-network:
+    driver: bridge
